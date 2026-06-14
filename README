@@ -1,0 +1,99 @@
+# Local RAG System for PDF Analysis
+
+A lightweight, fully local **Retrieval-Augmented Generation (RAG)** pipeline designed to ingest complex multi-page PDF documents—such as legal codes—and answer user queries accurately. Powered by **LangChain**, **Chroma DB**, and **Ollama**, this system runs entirely on your local machine, ensuring complete data privacy without relying on external API keys.
+
+---
+
+## 🚀 Key Features
+
+* **Local Embeddings & Generation:** Utilizes `nomic-embed-text` for vectorization and `qwen2.5:7b` via Ollama for answering queries locally.
+* **Hybrid Search Pipeline:** Combines dense semantic search (**Chroma**) with sparse keyword-based search (**BM25**) to yield the most accurate document contexts.
+* **Strict Context Enforcement:** The LLM prompt is engineered to respond *only* using the factual constraints found in the ingested PDF, actively preventing hallucinations.
+* **Timeout & Fail-Safe Configurations:** Configured with extended network timeouts (`120s`) to ensure stability during long local inference requests.
+
+---
+
+## 🛠️ System Architecture
+
+1. **Document Ingestion:** The `PyPDFLoader` reads and extracts text split into standard structural pages.
+2. **Indexing:**
+   * Text is vectorized using `OllamaEmbeddings` and indexed into a local `Chroma` vector store.
+   * Text is concurrently indexed inside a `BM25Retriever` instance.
+3. **Hybrid Retrieval:** When a query is made, both retrievers fetch the top $k$ results. The results are unified, and duplicates are dropped.
+4. **Augmented Generation:** The unified context along with the query is passed into the `qwen2.5:7b` chat model to extract a deterministic answer.
+
+---
+
+## 📋 Prerequisites & Requirements
+
+Ensure you have Python installed (the project environment uses **Python 3.10.11**) along with a working instance of Ollama.
+
+### 1. Model Dependencies (Ollama)
+You need to pull both models inside your terminal prior to execution:
+```bash
+ollama pull nomic-embed-text
+ollama pull qwen2.5:7b
+```
+### 2. Python Environment
+Install the core ecosphere packages within your virtual environment:
+
+```pip install langchain-chroma langchain-ollama langchain-community pypdf ```
+
+### 💻 Project Structure & Code Walkthrough
+
+The `.ipynb` notebook contains a clear, sequential structural layout:
+
+Step 1: Import Dependencies
+Loads specialized LangChain integrations designed for newer versioning practices (`langchain_chroma` and `langchain_ollama`).
+
+Step 2: Document Ingestion
+Loads the designated target file (configured for `"Código do trabalho.pdf"`) using `PyPDFLoader`.
+
+```
+file_path = "Código do trabalho.pdf"
+loader = PyPDFLoader(file_path)
+documents = loader.load_and_split()
+```
+
+### Step 3: Vector Database Population
+
+Generates and registers embeddings utilizing explicit timeouts to accommodate large file processing loads.
+
+```
+embeddings_locais = OllamaEmbeddings(
+    model="nomic-embed-text",
+    base_url="http://localhost:11434",
+    client_kwargs={"timeout": 120.0}
+)
+vectorstore = Chroma.from_documents(documents, embedding=embeddings_locais)
+```
+
+### Step 4: Hybrid Retriever Setup
+
+Executes a combined scoring pass leveraging semantic matching and explicit keyword relevance checks.
+
+```
+vector_retriever = vectorstore.as_retriever(search_kwargs={"k": 2})
+bm25_retriever = BM25Retriever.from_documents(documents)
+bm25_retriever.k = 2
+```
+
+### Step 5: Inference Generation
+
+Sets up `ChatOllama` at a strict `temperature=0` configuration to produce factual, non-creative assessments based on the merged context data.
+
+### 🔍 Example Usage & Behavior
+
+When querying the pipeline with terms such as:
+
+Question: "Qual é o limite de contrato?"
+
+If the information is missing from the localized knowledge context blocks retrieved by the hybrid architecture, the pipeline safely outputs a controlled default refusal instead of hallucinating:
+
+```✨ Resposta da IA:
+O documento fornecido não contém informações específicas sobre um "limite de contrato". 
+As disposições apresentadas tratam principalmente da cessação de contratos de trabalho, 
+licenças e horários de trabalho, mas não abordam um "limite de contrato" em particular.
+```
+
+
